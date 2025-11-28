@@ -1,0 +1,80 @@
+"""Generate realistic synthetic customer churn dataset.
+
+Usage:
+    python data/generate_dataset.py --output data/customer_churn.csv --n 10000
+"""
+import argparse
+import numpy as np
+import pandas as pd
+
+def generate_dataset(n=10000, random_state=42):
+    np.random.seed(random_state)
+    customerID = [f"CUST{100000+i}" for i in range(n)]
+    gender = np.random.choice(['Male','Female'], size=n)
+    SeniorCitizen = np.random.choice([0,1], size=n, p=[0.85,0.15])
+    Partner = np.random.choice(['Yes','No'], size=n, p=[0.45,0.55])
+    Dependents = np.random.choice(['Yes','No'], size=n, p=[0.3,0.7])
+    tenure = np.random.randint(0, 73, size=n)  # months
+    PhoneService = np.random.choice(['Yes','No'], size=n, p=[0.9,0.1])
+    MultipleLines = np.random.choice(['Yes','No','No phone service'], size=n, p=[0.2,0.65,0.15])
+    InternetService = np.random.choice(['DSL','Fiber optic','No'], size=n, p=[0.35,0.5,0.15])
+    OnlineSecurity = np.where(InternetService=='No', 'No internet service', np.random.choice(['Yes','No'], size=n, p=[0.25,0.75]))
+    OnlineBackup = np.where(InternetService=='No', 'No internet service', np.random.choice(['Yes','No'], size=n, p=[0.3,0.7]))
+    DeviceProtection = np.where(InternetService=='No', 'No internet service', np.random.choice(['Yes','No'], size=n, p=[0.3,0.7]))
+    TechSupport = np.where(InternetService=='No', 'No internet service', np.random.choice(['Yes','No'], size=n, p=[0.25,0.75]))
+    StreamingTV = np.where(InternetService=='No', 'No internet service', np.random.choice(['Yes','No'], size=n, p=[0.4,0.6]))
+    StreamingMovies = np.where(InternetService=='No', 'No internet service', np.random.choice(['Yes','No'], size=n, p=[0.4,0.6]))
+    Contract = np.random.choice(['Month-to-month','One year','Two year'], size=n, p=[0.6,0.2,0.2])
+    PaperlessBilling = np.random.choice(['Yes','No'], size=n, p=[0.5,0.5])
+    PaymentMethod = np.random.choice(['Electronic check','Mailed check','Bank transfer','Credit card'], size=n, p=[0.35,0.15,0.25,0.25])
+    MonthlyCharges = np.round(np.random.uniform(20,120,size=n),2)
+    # Make TotalCharges consistent but allow small noise
+    TotalCharges = np.round(MonthlyCharges * tenure + np.random.uniform(0,50,size=n),2)
+
+    # churn probability rules
+    churn_prob = (
+        (Contract == 'Month-to-month') * 0.30 +
+        (InternetService == 'Fiber optic') * 0.18 +
+        (PaymentMethod == 'Electronic check') * 0.12 +
+        (tenure < 12) * 0.18 +
+        (MonthlyCharges > 80) * 0.05 +
+        (SeniorCitizen == 1) * 0.03
+    )
+
+    churn_prob = np.clip(churn_prob + np.random.normal(0,0.05,size=n), 0, 1)
+    Churn = np.random.binomial(1, churn_prob)
+
+    df = pd.DataFrame(dict(
+        customerID=customerID,
+        gender=gender,
+        SeniorCitizen=SeniorCitizen,
+        Partner=Partner,
+        Dependents=Dependents,
+        tenure=tenure,
+        PhoneService=PhoneService,
+        MultipleLines=MultipleLines,
+        InternetService=InternetService,
+        OnlineSecurity=OnlineSecurity,
+        OnlineBackup=OnlineBackup,
+        DeviceProtection=DeviceProtection,
+        TechSupport=TechSupport,
+        StreamingTV=StreamingTV,
+        StreamingMovies=StreamingMovies,
+        Contract=Contract,
+        PaperlessBilling=PaperlessBilling,
+        PaymentMethod=PaymentMethod,
+        MonthlyCharges=MonthlyCharges,
+        TotalCharges=TotalCharges,
+        Churn=Churn
+    ))
+    return df
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--output', default='data/customer_churn.csv')
+    parser.add_argument('--n', type=int, default=10000)
+    args = parser.parse_args()
+    os.makedirs('data', exist_ok=True)
+    df = generate_dataset(n=args.n)
+    df.to_csv(args.output, index=False)
+    print(f"Saved synthetic dataset to {args.output}")
