@@ -78,3 +78,10 @@ if __name__ == '__main__':
     df = generate_dataset(n=args.n)
     df.to_csv(args.output, index=False)
     print(f"Saved synthetic dataset to {args.output}")
+sample-input_
+ustomerID,gender,SeniorCitizen,Partner,Dependents,tenure,PhoneService,MultipleLines,InternetService,OnlineSecurity,OnlineBackup,DeviceProtection,TechSupport,StreamingTV,StreamingMovies,Contract,PaperlessBilling,PaymentMethod,MonthlyCharges,TotalCharges,Churn
+CUST100001,Male,0,No,No,5,Yes,No,Fiber optic,No,No,No,No,Yes,No,Month-to-month,Yes,Electronic check,89.1,440.5,1
+CUST100002,Female,0,Yes,Yes,24,Yes,Yes,DSL,Yes,Yes,Yes,No,No,No,Two year,No,Credit card,55.3,1327.2,0
+CUST100003,Female,1,No,No,2,No,No phone service,No,No internet service,No internet service,No internet service,No internet service,No internet service,No internet service,Month-to-month,Yes,Mailed check,20.0,40.0,1
+
+
