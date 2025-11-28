@@ -1,8 +1,8 @@
-"""Generate realistic synthetic customer churn dataset.
+Generate realistic synthetic customer churn dataset.
 
 Usage:
     python data/generate_dataset.py --output data/customer_churn.csv --n 10000
-"""
+
 import argparse
 import numpy as np
 import pandas as pd
@@ -83,5 +83,6 @@ ustomerID,gender,SeniorCitizen,Partner,Dependents,tenure,PhoneService,MultipleLi
 CUST100001,Male,0,No,No,5,Yes,No,Fiber optic,No,No,No,No,Yes,No,Month-to-month,Yes,Electronic check,89.1,440.5,1
 CUST100002,Female,0,Yes,Yes,24,Yes,Yes,DSL,Yes,Yes,Yes,No,No,No,Two year,No,Credit card,55.3,1327.2,0
 CUST100003,Female,1,No,No,2,No,No phone service,No,No internet service,No internet service,No internet service,No internet service,No internet service,No internet service,Month-to-month,Yes,Mailed check,20.0,40.0,1
+
 
 
