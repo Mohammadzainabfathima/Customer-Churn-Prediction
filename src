@@ -1,0 +1,187 @@
+Predict-
+"""Load saved model and run predictions on new data.
+
+Example:
+    python src/predict.py --model models/best_model.joblib --input data/customer_churn.csv --output predictions.csv
+"""
+import argparse
+import pandas as pd
+import joblib
+import os
+
+def load_model(model_path):
+    obj = joblib.load(model_path)
+    return obj.get('model'), obj.get('encoder')
+
+def prepare_input(df):
+    # Minimal cleaning to align with training
+    if 'TotalCharges' in df.columns:
+        df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce').fillna(0.0)
+    # Feature engineering similar to training
+    df['AvgChargesPerMonth'] = df.apply(lambda r: r['TotalCharges']/r['tenure'] if r['tenure']>0 else r['MonthlyCharges'], axis=1)
+    df['HasPhoneService'] = (df['PhoneService'] == 'Yes').astype(int)
+    df['HasInternet'] = (df['InternetService'] != 'No').astype(int)
+    return df
+
+def predict_and_save(model, encoder, df, output_path):
+    X = df.drop(columns=[c for c in ['customerID','Churn'] if c in df.columns], errors='ignore')
+    # apply encoder if available (encoder was OneHotEncoder)
+    if encoder is not None:
+        categorical = X.select_dtypes(include=['object','category']).columns.tolist()
+        if len(categorical) > 0:
+            X_enc = pd.DataFrame(encoder.transform(X[categorical]), index=X.index, columns=encoder.get_feature_names_out(categorical))
+            X = X.drop(columns=categorical).join(X_enc)
+    X = X.fillna(0)
+    preds = model.predict(X)
+    proba = model.predict_proba(X)[:,1] if hasattr(model, 'predict_proba') else None
+    out = df[['customerID']].copy() if 'customerID' in df.columns else pd.DataFrame({'row_id': df.index})
+    out['prediction'] = preds
+    if proba is not None:
+        out['probability'] = proba
+    out.to_csv(output_path, index=False)
+    print(f"Predictions saved to {output_path}")
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model', required=True, help='path to saved model joblib')
+    parser.add_argument('--input', required=True, help='input csv path for prediction')
+    parser.add_argument('--output', default='predictions.csv', help='output csv path')
+    args = parser.parse_args()
+    model, encoder = load_model(args.model)
+    df = pd.read_csv(args.input)
+    df = prepare_input(df)
+    predict_and_save(model, encoder, df, args.output)
+
+
+
+Preprocess-
+""Preprocessing utilities for churn project."""
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.impute import SimpleImputer
+
+def load_data(path):
+    return pd.read_csv(path)
+
+def basic_cleaning(df):
+    # Ensure TotalCharges numeric (in case of dataset differences)
+    if 'TotalCharges' in df.columns:
+        df['TotalCharges'] = pd.to_numeric(df['TotalCharges'], errors='coerce')
+        # if there are NaNs because tenure=0 then fill with 0
+        df['TotalCharges'] = df['TotalCharges'].fillna(0.0)
+    return df
+
+def feature_engineering(df):
+    # Example feature: avg charges per month (guard divide-by-zero)
+    df = df.copy()
+    df['AvgChargesPerMonth'] = df.apply(lambda r: r['TotalCharges']/r['tenure'] if r['tenure']>0 else r['MonthlyCharges'], axis=1)
+    # Binary encode some columns
+    df['HasPhoneService'] = (df['PhoneService'] == 'Yes').astype(int)
+    df['HasInternet'] = (df['InternetService'] != 'No').astype(int)
+    return df
+
+def get_features_and_target(df, drop_cols=None):
+    if drop_cols is None:
+        drop_cols = ['customerID','Churn']
+    X = df.drop(columns=[c for c in drop_cols if c in df.columns])
+    y = df['Churn'].astype(int)
+    return X, y
+
+def encode_features(X_train, X_valid=None):
+    # Use one-hot encoding for categorical columns
+    X_train = X_train.copy()
+    categorical = X_train.select_dtypes(include=['object','category']).columns.tolist()
+    # Keep track of columns for pipeline-like behavior
+    encoder = OneHotEncoder(handle_unknown='ignore', sparse=False)
+    if len(categorical) > 0:
+        enc = encoder.fit(X_train[categorical])
+        X_train_enc = pd.DataFrame(enc.transform(X_train[categorical]), index=X_train.index, columns=enc.get_feature_names_out(categorical))
+        X_train = X_train.drop(columns=categorical).join(X_train_enc)
+        if X_valid is not None:
+            X_valid_enc = pd.DataFrame(enc.transform(X_valid[categorical]), index=X_valid.index, columns=enc.get_feature_names_out(categorical))
+            X_valid = X_valid.drop(columns=categorical).join(X_valid_enc)
+    else:
+        enc = None
+    return X_train, X_valid, enc
+
+
+
+
+Trained-model---
+"""Train and evaluate churn prediction models.
+
+Saves the best model into the output folder as 'best_model.joblib'.
+"""
+import argparse
+import os
+import joblib
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from preprocess import load_data, basic_cleaning, feature_engineering, get_features_and_target, encode_features
+
+def evaluate_model(model, X_test, y_test):
+    preds = model.predict(X_test)
+    print("Accuracy:", accuracy_score(y_test, preds))
+    print("Classification Report:\n", classification_report(y_test, preds))
+    cm = confusion_matrix(y_test, preds)
+    print("Confusion Matrix:\n", cm)
+
+def main(data_path, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    df = load_data(data_path)
+    df = basic_cleaning(df)
+    df = feature_engineering(df)
+
+    X, y = get_features_and_target(df)
+    # simple train/validation split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
+    X_train_enc, X_test_enc, encoder = encode_features(X_train, X_test)
+
+    # Some classifiers require no NaNs and numeric arrays
+    X_train_enc = X_train_enc.fillna(0)
+    X_test_enc = X_test_enc.fillna(0)
+
+    # Standard models
+    models = {
+        'logistic': LogisticRegression(max_iter=1000),
+        'random_forest': RandomForestClassifier(n_estimators=200, random_state=42, n_jobs=-1)
+    }
+
+    best_model = None
+    best_score = -1
+    for name, model in models.items():
+        print(f"Training {name}...")
+        # cross-validated accuracy
+        scores = cross_val_score(model, X_train_enc, y_train, cv=5, scoring='accuracy', n_jobs=-1)
+        print(f"CV accuracy for {name}: {np.mean(scores):.4f} (+/- {np.std(scores):.4f})")
+        model.fit(X_train_enc, y_train)
+        evaluate_model(model, X_test_enc, y_test)
+        acc = accuracy_score(y_test, model.predict(X_test_enc))
+        if acc > best_score:
+            best_score = acc
+            best_model = (name, model)
+
+    # Save the best model and encoder
+    model_name, model_obj = best_model
+    model_path = os.path.join(out_dir, 'best_model.joblib')
+    joblib.dump({'model': model_obj, 'encoder': encoder}, model_path)
+    print(f"Saved best model ({model_name}) to {model_path}")
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--data', required=True, help='path to csv data file')
+    parser.add_argument('--out', default='models', help='output directory to save model')
+    args = parser.parse_args()
+    # Need to ensure import path for preprocess
+    import sys
+    sys.path.append('src')
+    from src import preprocess as preprocess_module  # to ensure relative imports do not break when running from repo root
+    # But our functions are defined in src/preprocess.py; import them directly
+    from src.preprocess import load_data, basic_cleaning, feature_engineering, get_features_and_target, encode_features
+    main(args.data, args.out)
